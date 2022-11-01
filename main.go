@@ -61,7 +61,7 @@ var colorList = []string{
 
 // Globals
 var moverProps MoverProps = MoverProps{
-	MaxMovers:         100,
+	MaxMovers:         50,
 	MaxHeadingChange:  5,
 	MaxVelocityChange: 0.1,
 	StartVelocity:     2.0,
@@ -96,7 +96,15 @@ func makeMover(moverId int) (Mover, error) {
 }
 
 func (m *Mover) Create(dbPool *pgxpool.Pool) error {
-	sql := "INSERT INTO moving.objects (id, geog, color) VALUES ($1, ST_MakePoint($2, $3)::geography, $4)"
+	sql := `INSERT INTO moving.objects (id, geog, color)
+		VALUES ($1, ST_MakePoint($2, $3)::geography, $4)
+		ON CONFLICT (id) DO
+		UPDATE moving.objects
+		SET geog = ST_MakePoint($2, $3)::geography,
+		    color = $4
+		WHERE id = $1
+		`
+
 	_, err := dbPool.Exec(context.Background(), sql, m.Id, m.X, m.Y, m.Color)
 	return err
 }
@@ -145,8 +153,6 @@ func moverRoutine(ctx context.Context, moverId int) {
 	dbPool := moverCtx.DbPool
 	mover, _ := makeMover(moverId)
 	mover.Create(dbPool)
-
-	log.Infof("In moverRoutine with Mover %d", moverId)
 
 	for t := true; t; {
 		err := mover.Move(dbPool)
